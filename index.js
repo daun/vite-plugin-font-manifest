@@ -141,15 +141,15 @@ function getAllDeclarations(rule) {
 }
 
 function entryIsFontFile(entry) {
-  return entry.type === 'asset' && entry.fileName && /\.(woff2?|ttf|otf|eot)$/i.test(entry.fileName)
+  return entry.type === 'asset' && entry.fileName && /\.(woff2?|ttf|otf|eot)([?]|$)/i.test(entry.fileName)
 }
 
 function entryIsStylesheet(entry) {
-  return entry.type === 'asset' && entry.fileName && /\.css$/i.test(entry.fileName)
+  return entry.type === 'asset' && entry.fileName && /\.css([?]|$)/i.test(entry.fileName)
 }
 
 function getExtension(filename) {
-  return path.extname(filename).toLowerCase().replace(/^\./, '')
+  return path.extname(filename.split('?')[0]).toLowerCase().replace(/^\./, '')
 }
 
 function getMimeType(filename) {
