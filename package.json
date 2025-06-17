@@ -1,7 +1,6 @@
 {
   "name": "vite-plugin-font-manifest",
   "type": "module",
-  "version": "1.0.0",
   "description": "Add font information to Vite build manifests",
   "author": "Philipp Daun <daun@daun.ltd>",
   "license": "MIT",
@@ -10,6 +9,7 @@
   "repository": {
     "type": "git",
     "url": "git+http://github.com/daun/vite-plugin-font-manifest.git"
+  "version": "1.1.0",
   },
   "bugs": "http://github.com/daun/vite-plugin-font-manifest/issues",
   "keywords": [
