@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.2.0 - 2025-06-17
+
+- Include original font-face declaration
+
 ## 1.1.2 - 2025-06-17
 
 - Fix package json
