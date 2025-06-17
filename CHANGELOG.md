@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.1.2 - 2025-06-17
+
+- Fix package json
+
 ## 1.1.1 - 2025-06-17
 
 - Fix package json
