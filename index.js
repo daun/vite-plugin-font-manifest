@@ -104,6 +104,7 @@ function extractFontFaceInfo(rule, data = {}) {
     weight: declarations['font-weight'] || 'normal',
     style: declarations['font-style'] || 'normal',
     display: declarations['font-display'] || 'auto',
+    css: rule.toString(),
     mime: getMimeType(source.url),
     ...data
   }))
