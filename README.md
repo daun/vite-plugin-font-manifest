@@ -29,6 +29,7 @@ font-face CSS declarations.
     "fontFaces": [{
       "family": "Inter",
       "weight": "400",
+      "weightRange": [400, 400],
       "style": "normal",
       "display": "swap",
       "css": "@font-face { /* */ }",
@@ -45,6 +46,7 @@ font-face CSS declarations.
     "fontFaces": [{
       "family": "Inter",
       "weight": "400",
+      "weightRange": [400, 400],
       "style": "normal",
       "display": "swap",
       "format": "woff2",
@@ -61,6 +63,33 @@ those rules. Data and remote URLs remain in `sources` with `asset: null`.
 
 A font asset's `fontFaces` array contains every face that references the file. `definedIn`
 contains every stylesheet where that face occurs.
+
+### Field reference
+
+`format` is always one of `woff2`, `woff`, `ttf`, `otf`, `eot`, `ttc`, `svg`, or `null` for
+sources whose type cannot be determined. It is normalized from the CSS `format()` token when
+present and from the file extension otherwise, so `format("truetype")` and a bare `url(x.ttf)`
+both yield `ttf`. `mime` is derived from `format` and falls back to the string `"unknown"`.
+
+| `format` | `mime` |
+|---|---|
+| `woff2` | `font/woff2` |
+| `woff` | `font/woff` |
+| `ttf` | `font/ttf` |
+| `otf` | `font/otf` |
+| `eot` | `application/vnd.ms-fontobject` |
+| `ttc` | `font/collection` |
+| `svg` | `image/svg+xml` |
+
+`weight` is the authored `font-weight` value. `weightRange` is its numeric `[min, max]`
+resolution: `normal`, `auto`, and an omitted declaration become `[400, 400]`, `bold` becomes
+`[700, 700]`, and the variable-font range `100 900` becomes `[100, 900]`. Faces are
+deduplicated by the normalized range, so `font-weight: normal` and `font-weight: 400` are one
+face.
+
+The `@font-face` descriptor accepts only `auto`, `normal`, `bold`, and numbers in `[1, 1000]`
+— `bolder` and `lighter` are valid on the property but not the descriptor. Anything the
+descriptor rejects resolves to `[400, 400]`, its initial value.
 
 ## Install
 
@@ -91,6 +120,9 @@ export default defineConfig({
     ]
 })
 ```
+
+The plugin annotates Vite's build manifest, so `build.manifest` must be enabled. With the
+manifest disabled, the plugin does nothing.
 
 ### Preloading fonts
 

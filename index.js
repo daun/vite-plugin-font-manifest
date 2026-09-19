@@ -3,9 +3,43 @@ import path from 'path'
 import postcss from 'postcss'
 import valueParser from 'postcss-value-parser'
 
+/** Canonical format key → mime type. Keys are the values emitted as `format`. */
+const fontMimeTypes = {
+  woff2: 'font/woff2',
+  woff: 'font/woff',
+  ttf: 'font/ttf',
+  otf: 'font/otf',
+  eot: 'application/vnd.ms-fontobject',
+  ttc: 'font/collection',
+  svg: 'image/svg+xml'
+}
+
+/** CSS `format()` tokens and file extensions → canonical format key. */
+const fontFormats = {
+  woff2: 'woff2',
+  woff: 'woff',
+  truetype: 'ttf',
+  ttf: 'ttf',
+  opentype: 'otf',
+  otf: 'otf',
+  'embedded-opentype': 'eot',
+  eot: 'eot',
+  collection: 'ttc',
+  ttc: 'ttc',
+  svg: 'svg',
+  svgz: 'svg'
+}
+
+// `auto` is the initial value of the @font-face descriptor and selects as `normal`
+const fontWeightKeywords = { auto: 400, normal: 400, bold: 700 }
+
+const fontWeightRange = [1, 1000]
+
+const defaultObliqueAngle = '14deg'
+
 function fontManifestPlugin() {
   let config = {}
-  let info = {}
+  const outputs = new Map()
 
   return {
     name: 'font-manifest',
@@ -15,15 +49,22 @@ function fontManifestPlugin() {
       config = resolvedConfig
     },
 
-    // Extract font information from the bundle
+    // Extract font information from the bundle, keyed by output directory
     generateBundle(options, bundle) {
-      info = extractFontInfoFromBundle(bundle)
+      outputs.set(outputKey(options), extractFontInfoFromBundle(bundle))
     },
 
     // Write collected font information to the manifest
-    async writeBundle(options, bundle) {
+    async writeBundle(options) {
+      const info = outputs.get(outputKey(options))
+      outputs.delete(outputKey(options))
+
       // Skip if no font info was collected
+      if (! info) return
       if (! Object.keys(info.fonts).length && ! hasFontFaces(info.stylesheets)) return
+
+      // Skip if Vite was not asked to generate a manifest
+      if (! config.build?.manifest) return
 
       // Get the manifest path from Vite's config
       const manifestFileName =
@@ -31,32 +72,46 @@ function fontManifestPlugin() {
 
       const manifestPath = path.resolve(options.dir, manifestFileName)
 
+      // Read the generated manifest
+      let manifest
       try {
-        // Read the generated manifest
-        const manifestContent = await fs.readFile(manifestPath, 'utf-8')
-        const manifest = JSON.parse(manifestContent)
+        manifest = JSON.parse(await fs.readFile(manifestPath, 'utf-8'))
+      } catch (error) {
+        if (error.code === 'ENOENT') {
+          console.warn('Font manifest not found:', manifestPath)
+        } else {
+          console.warn('Error reading font manifest:', error)
+        }
+        return
+      }
 
-        // Update manifest entries with collected data about fonts and stylesheets
-        const updatedManifest = Object.entries({ ...info.stylesheets, ...info.fonts })
-          .reduce((contents, [filename, data]) => {
-            if (contents[filename]) {
-              contents[filename] = { ...contents[filename], ...data }
-            }
-            return contents
-          }, manifest)
+      // Update manifest entries with collected data about fonts and stylesheets
+      const updatedManifest = Object.entries({ ...info.stylesheets, ...info.fonts })
+        .reduce((contents, [filename, data]) => {
+          if (contents[filename]) {
+            contents[filename] = { ...contents[filename], ...data }
+          }
+          return contents
+        }, manifest)
 
-        // Write the updated manifest back to disk
+      // Write the updated manifest back to disk
+      try {
         await fs.writeFile(manifestPath, JSON.stringify(updatedManifest, null, 2))
       } catch (error) {
-        console.warn('Error updating font manifest:', error)
+        console.warn('Error writing font manifest:', error)
       }
     }
   }
 }
 
+function outputKey(options) {
+  return options?.dir ?? ''
+}
+
 function extractFontInfoFromBundle(bundle) {
   const fonts = {}
   const stylesheets = {}
+  const assets = createBundleAssetLookup(bundle)
 
   for (const asset of Object.values(bundle).filter((entry) => entryIsStylesheet(entry))) {
     const fontFaces = dedupeFontFaces(extractFontInfoFromStylesheet(asset))
@@ -64,23 +119,23 @@ function extractFontInfoFromBundle(bundle) {
 
     const stylesheetFontFaces = fontFaces.map((fontFace) => {
       const sources = fontFace.sources.map(({ url, format, mime }) => {
-        const sourceAsset = getOriginalFilenameFromBundle(bundle, url)
+        const sourceAsset = getOriginalFilenameFromBundle(assets, url)
         if (sourceAsset) stylesheetFonts.add(sourceAsset)
 
         return { asset: sourceAsset, format, mime }
       })
 
-      for (const source of fontFace.sources) {
-        const sourceAsset = getOriginalFilenameFromBundle(bundle, source.url)
+      for (const { asset: sourceAsset, format, mime } of sources) {
         if (! sourceAsset) continue
 
         const fileFontFace = {
           family: fontFace.family,
           weight: fontFace.weight,
+          weightRange: fontFace.weightRange,
           style: fontFace.style,
           display: fontFace.display,
-          format: source.format,
-          mime: source.mime,
+          format,
+          mime,
           definedIn: [asset.originalFileName]
         }
 
@@ -91,6 +146,7 @@ function extractFontInfoFromBundle(bundle) {
       return {
         family: fontFace.family,
         weight: fontFace.weight,
+        weightRange: fontFace.weightRange,
         style: fontFace.style,
         display: fontFace.display,
         css: fontFace.css,
@@ -111,13 +167,30 @@ function extractFontInfoFromBundle(bundle) {
   return { fonts, stylesheets }
 }
 
-function getOriginalFilenameFromBundle(bundle, url) {
+function createBundleAssetLookup(bundle) {
+  const assets = new Map()
+  for (const entry of Object.values(bundle)) {
+    if (! entry.fileName) continue
+    const fileName = entry.fileName.split(/[?#]/, 1)[0]
+    if (! assets.has(fileName)) assets.set(fileName, entry.originalFileName || null)
+  }
+  return assets
+}
+
+function getOriginalFilenameFromBundle(assets, url) {
   if (! url || /^(?:[a-z][a-z\d+.-]*:|\/\/)/i.test(url)) return null
 
   const pathname = url.split(/[?#]/, 1)[0]
-  return Object.values(bundle)
-    .find((entry) => entry.fileName && pathname.endsWith(entry.fileName.split(/[?#]/, 1)[0]))
-    ?.originalFileName || null
+  if (assets.has(pathname)) return assets.get(pathname)
+
+  // Match only on path boundaries, longest suffix first
+  const segments = pathname.split('/')
+  for (let i = 1; i < segments.length; i++) {
+    const candidate = segments.slice(i).join('/')
+    if (candidate && assets.has(candidate)) return assets.get(candidate)
+  }
+
+  return null
 }
 
 function extractFontInfoFromStylesheet(asset) {
@@ -134,22 +207,67 @@ function extractFontInfoFromStylesheet(asset) {
 function extractFontFaceInfo(rule) {
   const declarations = getAllDeclarations(rule)
   const sources = parseFontFaceSrcDeclaration(declarations['src']).map((source) => {
-    const format = source.format || getExtension(source.url)
+    const format = resolveFontFormat(source.format, source.url)
     return {
       url: source.url,
       format,
-      mime: getMimeType(format || source.url)
+      mime: getMimeType(format)
     }
   })
 
+  const weight = declarations['font-weight'] || 'normal'
+
   return {
     family: declarations['font-family']?.replace(/['"]/g, ''),
-    weight: declarations['font-weight'] || 'normal',
+    weight,
+    weightRange: normalizeFontWeight(weight),
     style: declarations['font-style'] || 'normal',
     display: declarations['font-display'] || 'auto',
     css: rule.toString(),
     sources
   }
+}
+
+/** Prefer the CSS format() token, fall back to the file extension. */
+function resolveFontFormat(token, url) {
+  return normalizeFontFormat(token) || normalizeFontFormat(getExtension(url)) || null
+}
+
+function normalizeFontFormat(value) {
+  if (! value) return null
+  return fontFormats[String(value).trim().toLowerCase().replace(/^['"]|['"]$/g, '')] || null
+}
+
+function getMimeType(format) {
+  return fontMimeTypes[format] || 'unknown'
+}
+
+/**
+ * Resolve an authored `font-weight` to a numeric [min, max] range.
+ * Values the descriptor rejects fall back to its initial value, `auto` (400).
+ */
+function normalizeFontWeight(value) {
+  const parts = String(value ?? '').trim().toLowerCase().split(/\s+/).filter(Boolean)
+  if (! parts.length || parts.length > 2) return [400, 400]
+
+  const weights = parts.map((part) => {
+    if (part in fontWeightKeywords) return fontWeightKeywords[part]
+    if (! /^\d+(\.\d+)?$/.test(part)) return null
+    const weight = Number(part)
+    const [min, max] = fontWeightRange
+    return weight >= min && weight <= max ? weight : null
+  })
+  if (weights.some((weight) => weight === null)) return [400, 400]
+
+  const [min, max = min] = weights
+  return min <= max ? [min, max] : [max, min]
+}
+
+/** Collapse equivalent `font-style` spellings: `oblique 14deg` is plain `oblique`. */
+function normalizeFontStyle(value) {
+  const style = String(value ?? '').trim().toLowerCase().replace(/\s+/g, ' ')
+  if (! style) return 'normal'
+  return style === `oblique ${defaultObliqueAngle}` ? 'oblique' : style
 }
 
 function dedupeFontFaces(fontFaces) {
@@ -181,8 +299,8 @@ function fontFaceKey(fontFace) {
 
   return JSON.stringify([
     fontFace.family,
-    fontFace.weight,
-    fontFace.style,
+    fontFace.weightRange ?? normalizeFontWeight(fontFace.weight),
+    normalizeFontStyle(fontFace.style),
     fontFace.display,
     sources
   ])
@@ -190,7 +308,7 @@ function fontFaceKey(fontFace) {
 
 function parseFontFaceSrcDeclaration(declaration) {
   const nodes = []
-  valueParser(declaration).walk((node) => nodes.push(node))
+  valueParser(declaration || '').walk((node) => nodes.push(node))
 
   const sources = splitNodesByDividers(nodes).map((source) => ({
     url: getFunctionValue(source, 'url'),
@@ -226,17 +344,6 @@ function entryIsStylesheet(entry) {
 function getExtension(filename) {
   if (! filename) return ''
   return path.extname(filename.split(/[?#]/, 1)[0]).toLowerCase().replace(/^\./, '')
-}
-
-function getMimeType(filenameOrFormat) {
-  const mimes = {
-    woff2: 'font/woff2',
-    woff: 'font/woff',
-    ttf: 'font/truetype',
-    otf: 'font/opentype',
-    eot: 'font/embedded-opentype'
-  }
-  return mimes[filenameOrFormat] || mimes[getExtension(filenameOrFormat)] || 'unknown'
 }
 
 function splitNodesByDividers(nodes) {
