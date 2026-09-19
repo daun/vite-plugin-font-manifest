@@ -25,11 +25,16 @@
   "engines": {
     "node": ">=16.0.0"
   },
-  "scripts": {},
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
   "dependencies": {
-    "postcss": "^8.0.0"
+    "postcss": "^8.0.0",
+    "postcss-value-parser": "^4.2.0"
   },
   "devDependencies": {
-    "vite": "^5.0.12"
+    "vite": "^5.0.12",
+    "vitest": "^3.2.7"
   }
 }
