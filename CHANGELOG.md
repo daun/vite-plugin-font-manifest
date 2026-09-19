@@ -1,5 +1,12 @@
 # Changelog
 
+## 2.0.0 - 2026-09-19
+
+- Replace singular `fontFace` metadata with `fontFaces` arrays
+- Add ordered font-face metadata to stylesheet entries
+- Preserve multiple faces per font file and accumulate their `definedIn` stylesheets
+- Continue builds after stylesheet parse errors
+
 ## 1.2.0 - 2025-06-17
 
 - Include original font-face declaration
