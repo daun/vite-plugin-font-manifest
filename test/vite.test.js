@@ -4,7 +4,6 @@ import { expect, test } from 'vitest'
 import fontManifest from '../index.js'
 
 const viteVersions = [
-  ['5', 'vite-5'],
   ['6', 'vite-6'],
   ['7', 'vite-7'],
   ['8', 'vite']

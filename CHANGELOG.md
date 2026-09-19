@@ -6,7 +6,7 @@
 - Add ordered font-face metadata to stylesheet entries
 - Preserve multiple faces per font file and accumulate their `definedIn` stylesheets
 - Continue builds after stylesheet parse errors
-- Upgrade dependencies and test production builds against Vite 5 through 8
+- Upgrade dependencies and test production builds against Vite 6 through 8
 
 ## 1.2.0 - 2025-06-17
 

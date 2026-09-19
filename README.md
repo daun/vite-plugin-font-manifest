@@ -72,7 +72,7 @@ npm install vite-plugin-font-manifest --save-dev
 
 ## Compatibility
 
-The plugin supports Vite 5, 6, 7, and 8. The test suite runs a real production build
+The plugin supports Vite 6, 7, and 8. The test suite runs a real production build
 against the latest release of each major version.
 
 ## Usage
