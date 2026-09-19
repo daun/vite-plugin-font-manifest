@@ -2,11 +2,10 @@
 
 ## 2.0.0 - 2026-09-19
 
-- Replace singular `fontFace` metadata with `fontFaces` arrays
-- Add ordered font-face metadata to stylesheet entries
-- Preserve multiple faces per font file and accumulate their `definedIn` stylesheets
-- Continue builds after stylesheet parse errors
-- Upgrade dependencies and test production builds against Vite 6 through 8
+- Keep every face, per font and per stylesheet, instead of one arbitrary winner
+- Emit correct preload hints for every font format, not just woff2
+- Expose weights so faces can be matched without reimplementing the CSS rules
+- Collapse equivalent faces spelled differently across stylesheets
 
 ## 1.2.0 - 2025-06-17
 

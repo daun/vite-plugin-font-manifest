@@ -9,9 +9,11 @@ font-face CSS declarations.
 
 **Before**
 
-
 ```json
 {
+  "src/css/display.css": {
+    "file": "assets/display.css"
+  },
   "src/fonts/Inter-Regular.woff2": {
     "file": "assets/Inter-Regular-CnZ_CWUo.woff2",
     "src": "src/fonts/Inter-Regular.woff2"
@@ -29,6 +31,7 @@ font-face CSS declarations.
     "fontFaces": [{
       "family": "Inter",
       "weight": "400",
+      "weightRange": [400, 400],
       "style": "normal",
       "display": "swap",
       "css": "@font-face { /* */ }",
@@ -45,6 +48,7 @@ font-face CSS declarations.
     "fontFaces": [{
       "family": "Inter",
       "weight": "400",
+      "weightRange": [400, 400],
       "style": "normal",
       "display": "swap",
       "format": "woff2",
@@ -55,13 +59,6 @@ font-face CSS declarations.
 }
 ```
 
-A stylesheet's `fontFaces` array preserves rule order and contains one entry per unique
-`@font-face` rule. Its `fonts` array contains the deduplicated bundle assets referenced by
-those rules. Data and remote URLs remain in `sources` with `asset: null`.
-
-A font asset's `fontFaces` array contains every face that references the file. `definedIn`
-contains every stylesheet where that face occurs.
-
 ## Install
 
 Using npm:
@@ -69,11 +66,6 @@ Using npm:
 ```console
 npm install vite-plugin-font-manifest --save-dev
 ```
-
-## Compatibility
-
-The plugin supports Vite 6, 7, and 8. The test suite runs a real production build
-against the latest release of each major version.
 
 ## Usage
 
@@ -92,10 +84,13 @@ export default defineConfig({
 })
 ```
 
+The plugin annotates Vite's build manifest, so `build.manifest` must be enabled. With the
+manifest disabled, the plugin does nothing.
+
 ### Preloading fonts
 
 To preload fonts, parse the build manifest and add `<link rel=preload>` tags for each font. This
-example is written in Twig and  limits preloading to `woff2` fonts for modern browsers.
+example is written in Twig and limits preloading to `woff2` fonts for modern browsers.
 
 ```twig
 {% for src in manifest['src/css/display.css'].fonts %}
