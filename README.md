@@ -23,20 +23,44 @@ font-face CSS declarations.
 
 ```json
 {
-  "src/fonts/Inter-Regular.woff2": {
-    "file": "assets/Inter-Regular-CnZ_CWUo.woff2",
-    "src": "src/fonts/Inter-Regular.woff2",
-    "fontFace": {
+  "src/css/display.css": {
+    "file": "assets/display.css",
+    "fonts": ["src/fonts/Inter-Regular.woff2"],
+    "fontFaces": [{
       "family": "Inter",
       "weight": "400",
       "style": "normal",
-      "mime": "font/woff2",
+      "display": "swap",
       "css": "@font-face { /* */ }",
+      "sources": [{
+        "asset": "src/fonts/Inter-Regular.woff2",
+        "format": "woff2",
+        "mime": "font/woff2"
+      }]
+    }]
+  },
+  "src/fonts/Inter-Regular.woff2": {
+    "file": "assets/Inter-Regular-CnZ_CWUo.woff2",
+    "src": "src/fonts/Inter-Regular.woff2",
+    "fontFaces": [{
+      "family": "Inter",
+      "weight": "400",
+      "style": "normal",
+      "display": "swap",
+      "format": "woff2",
+      "mime": "font/woff2",
       "definedIn": ["src/css/display.css"]
-    }
+    }]
   }
 }
 ```
+
+A stylesheet's `fontFaces` array preserves rule order and contains one entry per unique
+`@font-face` rule. Its `fonts` array contains the deduplicated bundle assets referenced by
+those rules. Data and remote URLs remain in `sources` with `asset: null`.
+
+A font asset's `fontFaces` array contains every face that references the file. `definedIn`
+contains every stylesheet where that face occurs.
 
 ## Install
 
@@ -69,22 +93,22 @@ To preload fonts, parse the build manifest and add `<link rel=preload>` tags for
 example is written in Twig and  limits preloading to `woff2` fonts for modern browsers.
 
 ```twig
-{% for src, entry in manifest %}
-  {% if entry.fontFace is defined and entry.fontFace.format == 'woff2' %}
-    <link rel="preload" href="/build/{{ entry.file }}" as="font" type="{{ entry.fontFace.mime }}" crossorigin="anonymous" />
-  {% endif %}
+{% for src in manifest['src/css/display.css'].fonts %}
+  {% set font = manifest[src] %}
+  {% set face = font.fontFaces|filter(face => face.format == 'woff2')|first %}
+  <link rel="preload" href="/build/{{ font.file }}" as="font" type="{{ face.mime }}" crossorigin="anonymous" />
 {% endfor %}
 ```
 
-You can optionally also inline the original font-face declaration in a `<style>` tag as fallback for
-browsers that do not support preloading.
+You can optionally inline the original font-face declarations from a stylesheet entry in a
+`<style>` tag.
 
 ```twig
-{% for src, entry in manifest %}
-  {% if entry.fontFace is defined %}
-    <style>{{ entry.fontFace.css }}</style>
-  {% endif %}
-{% endfor %}
+<style>
+  {% for face in manifest['src/css/display.css'].fontFaces %}
+    {{ face.css }}
+  {% endfor %}
+</style>
 ```
 
 ## Options
