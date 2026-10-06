@@ -75,3 +75,84 @@ test.each(viteVersions)('builds a font manifest with Vite %s', async (_, package
     await rm(root, { recursive: true, force: true })
   }
 })
+
+test.each(viteVersions)('builds a laravel font manifest with Vite %s', async (_, packageName) => {
+  const { build } = await import(packageName)
+  const root = await createFixture()
+
+  try {
+    await build({
+      root,
+      base: '/build/',
+      logLevel: 'silent',
+      plugins: [
+        fontManifest({
+          laravel: {
+            families: {
+              sans: { family: 'Inter', variable: '--font-sans' },
+              mono: { family: 'Legacy', variable: '--font-mono' }
+            },
+            preload: [
+              { alias: 'sans', weight: 400 },
+              { family: 'Legacy', weight: 400 }
+            ]
+          }
+        })
+      ],
+      build: {
+        assetsInlineLimit: 0,
+        emptyOutDir: true,
+        manifest: 'manifest.json',
+        outDir: 'dist'
+      }
+    })
+
+    const manifest = JSON.parse(
+      await readFile(path.join(root, 'dist/fonts-manifest.json'), 'utf8')
+    )
+
+    expect(manifest.version).toBe(1)
+    expect(manifest.families).toEqual({
+      sans: { family: 'Inter', variable: '--font-sans' },
+      mono: { family: 'Legacy', variable: '--font-mono' }
+    })
+    expect(manifest.style.variables).toEqual({
+      sans: '--font-sans: "Inter";',
+      mono: '--font-mono: "Legacy";'
+    })
+    expect(manifest.style.inline).toContain(':root {')
+    expect(manifest.style.inline.match(/@font-face/g)).toHaveLength(3)
+    expect(manifest.style.familyStyles.sans).toContain('url(/build/assets/shared-')
+    expect(withoutHashes(manifest.preloads)).toEqual([
+      {
+        alias: 'sans',
+        family: 'Inter',
+        weight: 400,
+        style: 'normal',
+        file: 'assets/shared.woff2',
+        as: 'font',
+        type: 'font/woff2',
+        crossorigin: 'anonymous'
+      },
+      {
+        alias: 'mono',
+        family: 'Legacy',
+        weight: 400,
+        style: 'normal',
+        file: 'assets/legacy.ttf',
+        as: 'font',
+        type: 'font/ttf',
+        crossorigin: 'anonymous'
+      }
+    ])
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+function withoutHashes(preloads) {
+  return preloads.map((preload) => ({
+    ...preload,
+    file: preload.file.replace(/-[\w-]+(\.\w+)$/, '$1')
+  }))
+}

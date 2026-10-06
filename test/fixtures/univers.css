@@ -1,0 +1,48 @@
+/* Vendored from a production Laravel build, hashes shortened. */
+@font-face {
+  font-family: "Univers";
+  font-style: normal;
+  font-weight: 300;
+  font-display: swap;
+  src: url(/build/assets/Univers-light-a1b2c3.woff2) format("woff2"),
+    url(/build/assets/Univers-light-a1b2c3.woff) format("woff");
+}
+@font-face {
+  font-family: "Univers";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url(/build/assets/Univers-regular-d4e5f6.woff2) format("woff2"),
+    url(/build/assets/Univers-regular-d4e5f6.woff) format("woff");
+}
+@font-face {
+  font-family: "Univers";
+  font-style: italic;
+  font-weight: 400;
+  font-display: swap;
+  src: url(/build/assets/Univers-italic-091a2b.woff2) format("woff2");
+}
+@font-face {
+  font-family: "Univers";
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url(/build/assets/Univers-bold-3c4d5e.woff2) format("woff2");
+}
+@font-face {
+  font-family: "Literata Variable";
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url(/build/assets/Literata-6f7a8b.woff2) format("woff2");
+}
+@font-face {
+  font-family: "Legacy Mono";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url(/build/assets/LegacyMono-9c0d1e.ttf) format("truetype");
+}
+.prose {
+  font-family: var(--font-serif);
+}

@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.1.0
+
+- Emit a Laravel `fonts-manifest.json` when the new `laravel` option is configured
+- Normalize `format` to a canonical key and `mime` to the correct IANA type
+- Expose a numeric `weightRange` and collapse faces whose weights or styles are spelled differently
+- Skip the manifest update when `build.manifest` is disabled instead of warning
+- Resolve font assets on path boundaries and keep per-output state in multi-output builds
+
 ## 2.0.0 - 2026-09-19
 
 - Keep every face, per font and per stylesheet, instead of one arbitrary winner
