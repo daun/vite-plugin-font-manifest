@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Skip `local()` sources in `@font-face` rules instead of recording them as unknown sources
+
 ## 2.0.0 - 2026-09-19
 
 - Keep every face, per font and per stylesheet, instead of one arbitrary winner

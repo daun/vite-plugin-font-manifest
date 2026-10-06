@@ -310,10 +310,12 @@ function parseFontFaceSrcDeclaration(declaration) {
   const nodes = []
   valueParser(declaration || '').walk((node) => nodes.push(node))
 
-  const sources = splitNodesByDividers(nodes).map((source) => ({
-    url: getFunctionValue(source, 'url'),
-    format: getFunctionValue(source, 'format')
-  }))
+  const sources = splitNodesByDividers(nodes)
+    .map((source) => ({
+      url: getFunctionValue(source, 'url'),
+      format: getFunctionValue(source, 'format')
+    }))
+    .filter(({ url }) => url)
 
   return sources
 }
