@@ -134,6 +134,30 @@ test('keeps non-bundle sources out of font asset lists', async () => {
   expect(manifest).not.toHaveProperty('null')
 })
 
+test('skips local() sources and keeps the url() sources of the same face', async () => {
+  const face = `@font-face{font-family:Inter;src:local("Inter Regular"), local(Inter), url(/build/assets/Inter.woff2) format("woff2")}`
+  const bundle = { main: stylesheet('assets/main.css', 'src/main.css', face), ...fontAssets }
+  const manifest = await buildJsonManifest(bundle, {
+    'src/main.css': { file: 'assets/main.css', isEntry: true }
+  })
+
+  expect(manifest['src/main.css'].fontFaces[0].sources).toEqual([
+    { asset: 'src/fonts/Inter.woff2', format: 'woff2', mime: 'font/woff2' }
+  ])
+  expect(manifest['src/main.css'].fonts).toEqual(['src/fonts/Inter.woff2'])
+})
+
+test('ignores a face that only declares local() sources', async () => {
+  const face = '@font-face{font-family:Local;src:local("Local Font")}'
+  const bundle = { main: stylesheet('assets/main.css', 'src/main.css', face) }
+  const manifest = await buildJsonManifest(bundle, {
+    'src/main.css': { file: 'assets/main.css', isEntry: true }
+  })
+
+  expect(manifest['src/main.css'].fonts).toEqual([])
+  expect(manifest['src/main.css'].fontFaces[0].sources).toEqual([])
+})
+
 test('warns and completes when a stylesheet cannot be parsed', async () => {
   const bundle = {
     broken: stylesheet('assets/broken.css', 'src/broken.css', '@font-face {')
