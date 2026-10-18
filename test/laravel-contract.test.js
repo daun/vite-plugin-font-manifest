@@ -19,16 +19,7 @@ const css = `@font-face {
   src: url(/build/assets/Literata.woff2) format("woff2");
 }`
 
-const laravel = {
-  families: {
-    sans: { family: 'Univers', variable: '--font-sans' },
-    serif: { family: 'Literata', variable: '--font-serif' }
-  },
-  preload: [
-    { alias: 'sans', weight: 400 },
-    { alias: 'serif', weight: 400 }
-  ]
-}
+const laravel = true
 
 async function emitManifest() {
   const directory = await mkdtemp(path.join(os.tmpdir(), 'laravel-contract-'))
@@ -76,22 +67,22 @@ test('an unfiltered @fonts call renders preload links and a style block', async 
   ])
   expect(style).toContain('<style>')
   expect(style).toContain('@font-face')
-  expect(style).toContain('--font-sans: "Univers";')
+  expect(style).toContain('--font-univers: "Univers";')
 })
 
 test('a filtered @fonts call renders only the requested family', async () => {
-  const { links, style } = renderFonts(await emitManifest(), ['sans'])
+  const { links, style } = renderFonts(await emitManifest(), ['univers'])
 
   expect(links).toHaveLength(1)
   expect(links[0]).toContain('Univers-regular.woff2')
   expect(style).toContain('Univers')
   expect(style).not.toContain('Literata')
-  expect(style).toContain(':root {\n  --font-sans: "Univers";\n}')
+  expect(style).toContain(':root {\n  --font-univers: "Univers";\n}')
 })
 
 // postcss does not reject a missing semicolon, it swallows the next declaration,
 // so count the variables Laravel actually renders rather than asserting it parses.
-test.each([[['sans'], 1], [['serif'], 1], [['sans', 'serif'], 2], [null, 2]])(
+test.each([[['univers'], 1], [['literata'], 1], [['univers', 'literata'], 2], [null, 2]])(
   'laravel renders one custom property per requested alias (%s)',
   async (aliases, expected) => {
     const { style } = renderFonts(await emitManifest(), aliases)
@@ -106,3 +97,22 @@ test.each([[['sans'], 1], [['serif'], 1], [['sans', 'serif'], 2], [null, 2]])(
     expect(variables.every((name) => name.startsWith('--font-'))).toBe(true)
   }
 )
+
+test('laravel accepts and renders nothing for a build without fonts', async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), 'laravel-contract-'))
+  await writeFile(path.join(directory, 'manifest.json'), '{}')
+
+  try {
+    const plugin = fontManifest({ laravel: true })
+    plugin.configResolved({ base: '/build/', build: { manifest: true } })
+    plugin.generateBundle({ dir: directory }, {
+      main: { type: 'asset', fileName: 'assets/main.css', originalFileName: 'src/main.css', source: '.a{color:red}' }
+    })
+    await plugin.writeBundle({ dir: directory })
+
+    const manifest = JSON.parse(await readFile(path.join(directory, 'fonts-manifest.json'), 'utf8'))
+    expect(renderFonts(manifest).html).toBe('')
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})

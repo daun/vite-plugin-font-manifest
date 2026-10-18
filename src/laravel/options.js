@@ -1,149 +1,53 @@
-import { fontWeightKeywords, fontWeightRange, normalizeFontStyle } from '../extract.js'
 import { fail, list } from './errors.js'
 
 const defaultManifestFilename = 'fonts-manifest.json'
 const supportedStyleModes = ['inline']
-const aliasPattern = /^[a-z0-9][a-z0-9_-]*$/i
-const variablePattern = /^--[a-z0-9_-]+$/i
-const supportedFontStyles = ['normal', 'italic', 'oblique']
+const knownOptions = ['include', 'exclude', 'preload', 'manifestFilename', 'style']
 
 /**
  * Validate the `laravel` option eagerly, at plugin construction, so a malformed
  * configuration fails before the build starts rather than after it.
+ *
+ * `true` is the whole configuration: every observed family is written to the
+ * manifest. The object form only narrows or tunes that default.
  */
 export function resolveLaravelOptions(options) {
   if (options === undefined || options === null || options === false) return null
-  if (! isPlainObject(options)) fail('`laravel` must be an object')
+  if (options === true) options = {}
+  if (! isPlainObject(options)) fail('`laravel` must be `true` or an object')
 
-  const families = resolveFamilies(options.families)
-  const preload = resolvePreloads(options.preload, families)
-  const manifestFilename = resolveManifestFilename(options.manifestFilename)
-  const style = resolveStyleMode(options.style)
+  const unknown = Object.keys(options).filter((key) => ! knownOptions.includes(key))
+  if (unknown.length) {
+    fail(`Unknown \`laravel\` option ${list(unknown)}. Supported options: ${list(knownOptions)}`)
+  }
 
-  return { families, preload, manifestFilename, style }
+  const include = resolveFamilyFilter(options.include, 'include')
+  const exclude = resolveFamilyFilter(options.exclude, 'exclude')
+  if (include && exclude) fail('Set either `laravel.include` or `laravel.exclude`, not both')
+
+  return {
+    include,
+    exclude,
+    preload: resolvePreload(options.preload),
+    manifestFilename: resolveManifestFilename(options.manifestFilename),
+    style: resolveStyleMode(options.style)
+  }
 }
 
-function resolveFamilies(families) {
-  if (! isPlainObject(families) || ! Object.keys(families).length) {
-    fail('`laravel.families` must be a non-empty object keyed by template alias')
+function resolveFamilyFilter(families, name) {
+  if (families === undefined || families === null) return null
+  if (typeof families === 'string') families = [families]
+  if (! Array.isArray(families) || families.some((family) => typeof family !== 'string' || ! family.trim())) {
+    fail(`\`laravel.${name}\` must be a list of font family names`)
   }
 
-  return Object.entries(families).map(([alias, config]) => {
-    if (! aliasPattern.test(alias)) {
-      fail(`Invalid family alias "${alias}": expected letters, digits, "-" or "_"`)
-    }
-    if (! isPlainObject(config)) {
-      fail(`Family "${alias}" must be an object with "family" and "variable"`)
-    }
-
-    const family = config.family
-    if (typeof family !== 'string' || ! family.trim()) {
-      fail(`Family "${alias}" is missing a "family" name`)
-    }
-    if (family.includes(',')) {
-      fail(`Family "${alias}" must name one family; fallback stacks are not supported`)
-    }
-    if (/^['"]|['"]$/.test(family.trim())) {
-      fail(`Family "${alias}" must be unquoted; quoting is applied when the variable is written`)
-    }
-
-    const variable = config.variable
-    if (typeof variable !== 'string' || ! variablePattern.test(variable)) {
-      fail(`Family "${alias}" needs a "variable" custom property, e.g. "--font-${alias}"`)
-    }
-
-    return { alias, family: family.trim(), variable }
-  })
+  return families.map((family) => family.trim())
 }
 
-function resolvePreloads(preload, families) {
-  if (preload === undefined || preload === null) return []
-  if (! Array.isArray(preload)) fail('`laravel.preload` must be an array')
-
-  const aliases = families.map(({ alias }) => alias)
-
-  return preload.map((selector, index) => {
-    const label = `preload[${index}]`
-    if (! isPlainObject(selector)) fail(`${label} must be an object`)
-
-    const hasAlias = selector.alias !== undefined
-    const hasFamily = selector.family !== undefined
-    if (hasAlias === hasFamily) {
-      fail(`${label} must set exactly one of "alias" and "family"`)
-    }
-    if (hasAlias && (typeof selector.alias !== 'string' || ! aliases.includes(selector.alias))) {
-      fail(`${label} has unknown alias "${selector.alias}". Configured aliases: ${list(aliases)}`)
-    }
-    if (hasFamily && (typeof selector.family !== 'string' || ! selector.family.trim())) {
-      fail(`${label} has an invalid "family"`)
-    }
-
-    return {
-      label,
-      alias: hasAlias ? selector.alias : null,
-      family: hasFamily ? selector.family.trim() : null,
-      weight: resolveSelectorWeight(selector.weight, label),
-      style: resolveSelectorStyle(selector.style, label),
-      attributes: resolvePreloadAttributes(selector, label)
-    }
-  })
-}
-
-function resolveSelectorWeight(weight, label) {
-  if (weight === undefined || weight === null) fail(`${label} is missing a "weight"`)
-
-  if (typeof weight === 'string' && weight.trim().toLowerCase() in fontWeightKeywords) {
-    return fontWeightKeywords[weight.trim().toLowerCase()]
-  }
-
-  const value = typeof weight === 'number' ? weight : Number(String(weight).trim())
-  const [min, max] = fontWeightRange
-  if (! Number.isFinite(value) || value < min || value > max) {
-    fail(`${label} has an invalid weight "${weight}": expected ${min}-${max}, "normal" or "bold"`)
-  }
-
-  return value
-}
-
-function resolveSelectorStyle(style, label) {
-  if (style === undefined || style === null) return 'normal'
-  if (typeof style !== 'string') fail(`${label} has an invalid "style"`)
-
-  const normalized = normalizeFontStyle(style)
-  if (! supportedFontStyles.includes(normalized.split(' ')[0])) {
-    fail(`${label} has an unknown style "${style}"`)
-  }
-
-  return normalized
-}
-
-/**
- * Laravel passes `as`, `type` and `crossorigin` through verbatim and omits the
- * latter two when absent, so `null` is a meaningful value here, not a default.
- */
-function resolvePreloadAttributes(selector, label) {
-  const attributes = {}
-
-  if (selector.as !== undefined) {
-    if (typeof selector.as !== 'string' || ! selector.as.trim()) {
-      fail(`${label} has an invalid "as" attribute`)
-    }
-    attributes.as = selector.as.trim()
-  }
-
-  for (const name of ['type', 'crossorigin']) {
-    if (selector[name] === undefined) continue
-    if (selector[name] === null || selector[name] === false) {
-      attributes[name] = null
-      continue
-    }
-    if (typeof selector[name] !== 'string' || ! selector[name].trim()) {
-      fail(`${label} has an invalid "${name}" attribute`)
-    }
-    attributes[name] = selector[name].trim()
-  }
-
-  return attributes
+function resolvePreload(preload) {
+  if (preload === undefined || preload === null) return true
+  if (typeof preload !== 'boolean') fail('`laravel.preload` must be `true` or `false`')
+  return preload
 }
 
 function resolveManifestFilename(filename) {

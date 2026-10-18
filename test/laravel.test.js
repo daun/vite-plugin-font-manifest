@@ -55,8 +55,6 @@ const universFiles = [
   'Univers-italic.woff2'
 ]
 
-const sansFamily = { sans: { family: 'Univers', variable: '--font-sans' } }
-
 async function build(bundle, { laravel, base = '/', build = { manifest: true } } = {}) {
   const directory = await mkdtemp(path.join(os.tmpdir(), 'laravel-fonts-'))
   await writeFile(path.join(directory, 'manifest.json'), JSON.stringify({}))
@@ -114,7 +112,6 @@ async function errorFor(bundle, laravel, options) {
   }
 }
 
-// 1 + 23
 test('stays opt-in and writes nothing extra without laravel options', async () => {
   const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
   const { files, viteManifest } = await build(bundleFor(regularFace, universFiles))
@@ -125,7 +122,6 @@ test('stays opt-in and writes nothing extra without laravel options', async () =
   warn.mockRestore()
 })
 
-// 2
 test('leaves a build without fonts or laravel options untouched', async () => {
   const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
   const { files } = await build({ main: asset('assets/main.css', 'src/main.css', '.a{color:red}') })
@@ -141,7 +137,7 @@ test('leaves the ordinary vite manifest untouched in laravel mode', async () => 
   await writeFile(path.join(directory, 'manifest.json'), JSON.stringify(original))
 
   try {
-    const plugin = fontManifest({ laravel: { families: sansFamily } })
+    const plugin = fontManifest({ laravel: true })
     plugin.configResolved({ base: '/build/', build: { manifest: true } })
     plugin.generateBundle({ dir: directory }, bundleFor(regularFace, universFiles))
     await plugin.writeBundle({ dir: directory })
@@ -154,103 +150,156 @@ test('leaves the ordinary vite manifest untouched in laravel mode', async () => 
   }
 })
 
-// 3 + 5
-test('emits inline styles with every configured face and a :root block', async () => {
+test('writes every observed family with derived aliases and variables', async () => {
   const { manifest } = await buildManifest(
     bundleFor(`${regularFace}\n${boldFace}\n${variableFace}`, [...universFiles, 'Literata.woff2']),
-    {
-      base: '/build/',
-      laravel: {
-        families: {
-          sans: { family: 'Univers', variable: '--font-sans' },
-          serif: { family: 'Literata', variable: '--font-serif' }
-        }
-      }
-    }
+    { base: '/build/', laravel: true }
   )
 
   expect(manifest.version).toBe(1)
-  expect(manifest.style.inline).toContain('font-family: "Univers"')
-  expect(manifest.style.inline).toContain('font-weight: 700')
-  expect(manifest.style.inline).toContain('font-family: "Literata"')
-  expect(manifest.style.inline).toContain(
-    ':root {\n  --font-sans: "Univers";\n  --font-serif: "Literata";\n}'
-  )
-  expect(manifest.style.inline.match(/@font-face/g)).toHaveLength(3)
   expect(manifest.families).toEqual({
-    sans: { family: 'Univers', variable: '--font-sans' },
-    serif: { family: 'Literata', variable: '--font-serif' }
+    univers: { family: 'Univers', variable: '--font-univers' },
+    literata: { family: 'Literata', variable: '--font-literata' }
+  })
+  expect(manifest.style.inline.match(/@font-face/g)).toHaveLength(3)
+  expect(manifest.style.inline).toContain(
+    ':root {\n  --font-univers: "Univers";\n  --font-literata: "Literata";\n}'
+  )
+})
+
+test('treats an empty object like true', async () => {
+  const bundle = bundleFor(regularFace, universFiles)
+  const fromTrue = await buildManifest(bundle, { base: '/build/', laravel: true })
+  const fromObject = await buildManifest(bundle, { base: '/build/', laravel: {} })
+
+  expect(fromObject.manifest).toEqual(fromTrue.manifest)
+})
+
+test('slugs multi-word families like laravel-vite-plugin does', async () => {
+  const { manifest } = await buildManifest(
+    bundleFor(regularFace.replace('"Univers"', '"Brand Sans Pro"'), universFiles),
+    { base: '/build/', laravel: true }
+  )
+
+  expect(manifest.families).toEqual({
+    'brand-sans-pro': { family: 'Brand Sans Pro', variable: '--font-brand-sans-pro' }
   })
 })
 
-// 4 + 5
 test('keys family styles and variables by alias', async () => {
   const { manifest } = await buildManifest(
     bundleFor(`${regularFace}\n${variableFace}`, [...universFiles, 'Literata.woff2']),
-    {
-      base: '/build/',
-      laravel: {
-        families: {
-          sans: { family: 'Univers', variable: '--font-sans' },
-          serif: { family: 'Literata', variable: '--font-serif' }
-        }
-      }
-    }
+    { base: '/build/', laravel: true }
   )
 
-  expect(Object.keys(manifest.style.familyStyles)).toEqual(['sans', 'serif'])
-  expect(manifest.style.familyStyles.sans).toContain('Univers')
-  expect(manifest.style.familyStyles.sans).not.toContain('Literata')
-  expect(manifest.style.familyStyles.serif).toContain('Literata')
+  expect(Object.keys(manifest.style.familyStyles)).toEqual(['univers', 'literata'])
+  expect(manifest.style.familyStyles.univers).toContain('Univers')
+  expect(manifest.style.familyStyles.univers).not.toContain('Literata')
+  expect(manifest.style.familyStyles.literata).toContain('Literata')
   expect(manifest.style.variables).toEqual({
-    sans: '--font-sans: "Univers";',
-    serif: '--font-serif: "Literata";'
+    univers: '--font-univers: "Univers";',
+    literata: '--font-literata: "Literata";'
   })
-  for (const declaration of Object.values(manifest.style.variables)) {
-    expect(declaration.endsWith(';')).toBe(true)
-  }
 })
 
-// 6
+test('groups families case-insensitively and keeps the first spelling', async () => {
+  const css = `${regularFace}\n${boldFace.replace('"Univers"', 'univers')}`
+  const { manifest } = await buildManifest(bundleFor(css, universFiles), {
+    base: '/build/',
+    laravel: true
+  })
+
+  expect(manifest.families).toEqual({ univers: { family: 'Univers', variable: '--font-univers' } })
+  expect(manifest.style.familyStyles.univers.match(/@font-face/g)).toHaveLength(2)
+})
+
+test('includes only the listed families', async () => {
+  const { manifest } = await buildManifest(
+    bundleFor(`${regularFace}\n${variableFace}`, [...universFiles, 'Literata.woff2']),
+    { base: '/build/', laravel: { include: ['literata'] } }
+  )
+
+  expect(Object.keys(manifest.families)).toEqual(['literata'])
+  expect(manifest.style.inline).not.toContain('Univers')
+  expect(manifest.preloads.map(({ alias }) => alias)).toEqual(['literata'])
+})
+
+test('excludes the listed families', async () => {
+  const { manifest } = await buildManifest(
+    bundleFor(`${regularFace}\n${variableFace}`, [...universFiles, 'Literata.woff2']),
+    { base: '/build/', laravel: { exclude: 'Literata' } }
+  )
+
+  expect(Object.keys(manifest.families)).toEqual(['univers'])
+  expect(manifest.style.inline).not.toContain('Literata')
+})
+
+test.each(['include', 'exclude'])('fails when %s names an undeclared family', async (name) => {
+  const message = await errorFor(bundleFor(regularFace, universFiles), { [name]: ['Helvetica'] })
+
+  expect(message).toContain(`\`laravel.${name}\` names "Helvetica"`)
+  expect(message).toContain('Observed families: "Univers"')
+})
+
+test('fails when two families map to the same alias', async () => {
+  const css = `${regularFace}\n${boldFace.replace('"Univers"', '"Univers!"')}`
+  const message = await errorFor(bundleFor(css, universFiles), true)
+
+  expect(message).toContain('"Univers" and "Univers!" both map to the Laravel alias "univers"')
+  expect(message).toContain('laravel.exclude')
+})
+
+test('fails when a family yields no alias', async () => {
+  const message = await errorFor(bundleFor(regularFace.replace('"Univers"', '"游ゴシック"'), universFiles), true)
+
+  expect(message).toContain('Cannot derive a Laravel alias from font family "游ゴシック"')
+})
+
+test('writes a valid empty manifest when no fonts are declared', async () => {
+  const { manifest } = await buildManifest(
+    { main: asset('assets/main.css', 'src/main.css', '.a{color:red}') },
+    { base: '/build/', laravel: true }
+  )
+
+  expect(manifest).toEqual({
+    version: 1,
+    style: { inline: '', familyStyles: {}, variables: {} },
+    preloads: [],
+    families: {}
+  })
+})
+
 test('rewrites bundled font urls to document-safe urls', async () => {
   const css = `@font-face{font-family:Univers;font-weight:400;src:url(../assets/Univers-regular.woff2?v=1) format("woff2"),url(data:font/woff2;base64,AAAA) format("woff2")}`
   const bundle = {
     main: asset('nested/main.css', 'src/main.css', css),
     font: asset('assets/Univers-regular.woff2', 'src/fonts/Univers-regular.woff2')
   }
-  const { manifest } = await buildManifest(bundle, {
-    base: '/build/',
-    laravel: { families: sansFamily }
-  })
+  const { manifest } = await buildManifest(bundle, { base: '/build/', laravel: true })
 
-  expect(manifest.style.familyStyles.sans).toContain('url(/build/assets/Univers-regular.woff2?v=1)')
-  expect(manifest.style.familyStyles.sans).toContain('url(data:font/woff2;base64,AAAA)')
-  expect(manifest.style.familyStyles.sans).not.toContain('../assets')
+  expect(manifest.style.familyStyles.univers).toContain('url(/build/assets/Univers-regular.woff2?v=1)')
+  expect(manifest.style.familyStyles.univers).toContain('url(data:font/woff2;base64,AAAA)')
+  expect(manifest.style.familyStyles.univers).not.toContain('../assets')
 })
 
 test('leaves remote and public directory urls alone', async () => {
   const css = `@font-face{font-family:Univers;font-weight:400;src:url(/fonts/public.woff2) format("woff2"),url(https://cdn.example.com/x.woff2) format("woff2")}`
   const { manifest } = await buildManifest(
     { main: asset('assets/main.css', 'src/main.css', css) },
-    { base: '/build/', laravel: { families: sansFamily } }
+    { base: '/build/', laravel: true }
   )
 
-  expect(manifest.style.familyStyles.sans).toContain('url(/fonts/public.woff2)')
-  expect(manifest.style.familyStyles.sans).toContain('url(https://cdn.example.com/x.woff2)')
+  expect(manifest.style.familyStyles.univers).toContain('url(/fonts/public.woff2)')
+  expect(manifest.style.familyStyles.univers).toContain('url(https://cdn.example.com/x.woff2)')
 })
 
 test('fails when a relative base cannot produce document-safe urls', async () => {
-  const message = await errorFor(
-    bundleFor(regularFace, universFiles),
-    { families: sansFamily },
-    { base: './' }
-  )
+  const message = await errorFor(bundleFor(regularFace, universFiles), true, { base: './' })
 
   expect(message).toContain('document-safe')
   expect(message).toContain('absolute `base`')
 })
 
-// 7
 test.each([
   ['default base', '/'],
   ['laravel base', '/build/'],
@@ -258,22 +307,21 @@ test.each([
 ])('emits preload files without the base prefix under %s', async (_, base) => {
   const { manifest } = await buildManifest(bundleFor(regularFace, universFiles), {
     base,
-    laravel: { families: sansFamily, preload: [{ alias: 'sans', weight: 400 }] }
+    laravel: true
   })
 
   expect(manifest.preloads[0].file).toBe('assets/Univers-regular.woff2')
 })
 
-// 8 + 10
-test('prefers woff2 over woff and always names the alias', async () => {
-  const { manifest } = await buildManifest(bundleFor(regularFace, universFiles), {
-    base: '/build/',
-    laravel: { families: sansFamily, preload: [{ family: 'Univers', weight: 400 }] }
-  })
+test('preloads every face once, preferring woff2', async () => {
+  const { manifest } = await buildManifest(
+    bundleFor(`${regularFace}\n${boldFace}\n${italicFace}`, universFiles),
+    { base: '/build/', laravel: true }
+  )
 
   expect(manifest.preloads).toEqual([
     {
-      alias: 'sans',
+      alias: 'univers',
       family: 'Univers',
       weight: 400,
       style: 'normal',
@@ -281,237 +329,75 @@ test('prefers woff2 over woff and always names the alias', async () => {
       as: 'font',
       type: 'font/woff2',
       crossorigin: 'anonymous'
-    }
+    },
+    expect.objectContaining({ weight: 700, style: 'normal', file: 'assets/Univers-bold.woff2' }),
+    expect.objectContaining({ weight: 400, style: 'italic', file: 'assets/Univers-italic.woff2' })
   ])
 })
 
-// 9
-test('resolves alias and family selectors identically', async () => {
-  const options = { base: '/build/', laravel: { families: sansFamily } }
-  const bundle = bundleFor(regularFace, universFiles)
-  const byAlias = await buildManifest(bundle, {
-    ...options,
-    laravel: { ...options.laravel, preload: [{ alias: 'sans', weight: 400 }] }
-  })
-  const byFamily = await buildManifest(bundle, {
-    ...options,
-    laravel: { ...options.laravel, preload: [{ family: 'Univers', weight: 400 }] }
-  })
-
-  expect(byAlias.manifest.preloads).toEqual(byFamily.manifest.preloads)
-})
-
-// 11
-test('keeps one preload entry per alias when two aliases share a family', async () => {
-  const { manifest } = await buildManifest(bundleFor(regularFace, universFiles), {
-    base: '/build/',
-    laravel: {
-      families: {
-        sans: { family: 'Univers', variable: '--font-sans' },
-        display: { family: 'Univers', variable: '--font-display' }
-      },
-      preload: [
-        { alias: 'sans', weight: 400 },
-        { alias: 'display', weight: 400 }
-      ]
-    }
-  })
-
-  expect(manifest.preloads.map(({ alias, file }) => [alias, file])).toEqual([
-    ['sans', 'assets/Univers-regular.woff2'],
-    ['display', 'assets/Univers-regular.woff2']
-  ])
-})
-
-// 12
-test('deduplicates selectors resolving to the same alias and file', async () => {
-  const { manifest } = await buildManifest(bundleFor(regularFace, universFiles), {
-    base: '/build/',
-    laravel: {
-      families: sansFamily,
-      preload: [
-        { alias: 'sans', weight: 400 },
-        { family: 'Univers', weight: 400, style: 'normal' }
-      ]
-    }
-  })
-
-  expect(manifest.preloads).toHaveLength(1)
-})
-
-// 13
-test('selects the normal face when style is omitted', async () => {
-  const { manifest } = await buildManifest(
-    bundleFor(`${regularFace}\n${italicFace}`, universFiles),
-    {
-      base: '/build/',
-      laravel: {
-        families: sansFamily,
-        preload: [{ alias: 'sans', weight: 400 }, { alias: 'sans', weight: 400, style: 'italic' }]
-      }
-    }
-  )
-
-  expect(manifest.preloads.map(({ style, file }) => [style, file])).toEqual([
-    ['normal', 'assets/Univers-regular.woff2'],
-    ['italic', 'assets/Univers-italic.woff2']
-  ])
-})
-
-// 14
-test('matches a variable font weight range', async () => {
+test('describes a variable font weight range', async () => {
   const { manifest } = await buildManifest(bundleFor(variableFace, ['Literata.woff2']), {
     base: '/build/',
-    laravel: {
-      families: { serif: { family: 'Literata', variable: '--font-serif' } },
-      preload: [{ alias: 'serif', weight: 400 }]
-    }
+    laravel: true
   })
 
-  expect(manifest.preloads).toHaveLength(1)
-  expect(manifest.preloads[0].weight).toBe(400)
-  expect(manifest.preloads[0].file).toBe('assets/Literata.woff2')
+  expect(manifest.preloads).toEqual([
+    expect.objectContaining({ weight: '100 900', file: 'assets/Literata.woff2' })
+  ])
 })
 
-test('supports per-selector preload attribute overrides', async () => {
+test('skips preloads when disabled', async () => {
   const { manifest } = await buildManifest(bundleFor(regularFace, universFiles), {
     base: '/build/',
-    laravel: {
-      families: sansFamily,
-      preload: [{ alias: 'sans', weight: 400, crossorigin: null, type: 'font/woff2' }]
-    }
+    laravel: { preload: false }
   })
 
-  expect(manifest.preloads[0]).not.toHaveProperty('crossorigin')
-  expect(manifest.preloads[0].type).toBe('font/woff2')
+  expect(manifest.preloads).toEqual([])
+  expect(manifest.style.inline).toContain('@font-face')
 })
 
-// 15
-test.each([
-  [{ alias: 'display', weight: 400 }, 'unknown alias "display"'],
-  [{ family: 'Helvetica', weight: 400 }, 'unconfigured family "Helvetica"']
-])('rejects unknown selectors (%#)', async (selector, expected) => {
-  const laravel = { families: sansFamily, preload: [selector] }
-  const message = selector.alias
-    ? errorMessageFor(() => fontManifest({ laravel }))
-    : await errorFor(bundleFor(regularFace, universFiles), laravel, { base: '/build/' })
-
-  expect(message).toContain(expected)
-})
-
-function errorMessageFor(callback) {
-  try {
-    callback()
-    return null
-  } catch (error) {
-    return error.message
-  }
-}
-
-// 16
-test('rejects a family selector matching several aliases', async () => {
-  const message = await errorFor(
-    bundleFor(regularFace, universFiles),
-    {
-      families: {
-        sans: { family: 'Univers', variable: '--font-sans' },
-        display: { family: 'Univers', variable: '--font-display' }
-      },
-      preload: [{ family: 'Univers', weight: 400 }]
-    },
-    { base: '/build/' }
-  )
-
-  expect(message).toContain('ambiguous')
-  expect(message).toContain('"sans", "display"')
-})
-
-// 17
-test('fails when a configured family is never declared', async () => {
-  const message = await errorFor(
-    bundleFor(regularFace, universFiles),
-    { families: { serif: { family: 'Literata', variable: '--font-serif' } } },
-    { base: '/build/' }
-  )
-
-  expect(message).toContain('No @font-face rule declares family "Literata"')
-  expect(message).toContain('Observed families: "Univers"')
-})
-
-test('fails when a client build carries no stylesheets at all', async () => {
-  const message = await errorFor({}, { families: sansFamily }, { base: '/build/' })
-
-  expect(message).toContain('No @font-face rule declares family "Univers"')
-})
-
-// 18
-test('fails when a selector matches no observed face', async () => {
-  const message = await errorFor(
-    bundleFor(regularFace, universFiles),
-    { families: sansFamily, preload: [{ alias: 'sans', weight: 900 }] },
-    { base: '/build/' }
-  )
-
-  expect(message).toContain('matches no observed face')
-  expect(message).toContain('weight 900')
-})
-
-// 19
-test('fails on equally preferred sources', async () => {
+test('picks the first of equally preferred sources', async () => {
   const css = `@font-face{font-family:Univers;font-weight:400;src:url(/build/assets/a.woff2) format("woff2"),url(/build/assets/b.woff2) format("woff2")}`
   const bundle = {
     main: asset('assets/main.css', 'src/main.css', css),
     a: asset('assets/a.woff2', 'src/fonts/a.woff2'),
     b: asset('assets/b.woff2', 'src/fonts/b.woff2')
   }
-  const message = await errorFor(
-    bundle,
-    { families: sansFamily, preload: [{ alias: 'sans', weight: 400 }] },
-    { base: '/build/' }
-  )
+  const { manifest } = await buildManifest(bundle, { base: '/build/', laravel: true })
 
-  expect(message).toContain('equally')
-  expect(message).toContain('assets/a.woff2')
+  expect(manifest.preloads.map(({ file }) => file)).toEqual(['assets/a.woff2'])
 })
 
-// 20
 test.each([
   ['data', 'url(data:font/woff2;base64,AAAA) format("woff2")'],
   ['remote', 'url(https://cdn.example.com/Univers.woff2) format("woff2")'],
   ['public directory', 'url(/fonts/Univers.woff2) format("woff2")']
-])('refuses to preload %s sources', async (_, src) => {
+])('does not preload %s sources but keeps their css', async (_, src) => {
   const css = `@font-face{font-family:Univers;font-weight:400;src:${src}}`
-  const message = await errorFor(
+  const { manifest } = await buildManifest(
     { main: asset('assets/main.css', 'src/main.css', css) },
-    { families: sansFamily, preload: [{ alias: 'sans', weight: 400 }] },
-    { base: '/build/' }
+    { base: '/build/', laravel: true }
   )
 
-  expect(message).toContain('no bundled source')
+  expect(manifest.preloads).toEqual([])
+  expect(manifest.style.familyStyles.univers).toContain('@font-face')
 })
 
-// 21
-test('refuses to preload a source with an unresolvable mime type', async () => {
+test('does not preload a source with an unresolvable mime type', async () => {
   const css = `@font-face{font-family:Univers;font-weight:400;src:url(/build/assets/Univers.bin) format("nonsense")}`
   const bundle = {
     main: asset('assets/main.css', 'src/main.css', css),
     font: asset('assets/Univers.bin', 'src/fonts/Univers.bin')
   }
-  const message = await errorFor(
-    bundle,
-    { families: sansFamily, preload: [{ alias: 'sans', weight: 400 }] },
-    { base: '/build/' }
-  )
+  const { manifest } = await buildManifest(bundle, { base: '/build/', laravel: true })
 
-  expect(message).toContain('Univers.bin')
-  expect(message).toContain('unknown')
+  expect(manifest.preloads).toEqual([])
 })
 
-// 22
 test('respects a custom manifest filename', async () => {
   const { manifest, files } = await buildManifest(bundleFor(regularFace, universFiles), {
     base: '/build/',
-    laravel: { families: sansFamily, manifestFilename: 'my-fonts.json' }
+    laravel: { manifestFilename: 'my-fonts.json' }
   })
 
   expect(files).toContain('my-fonts.json')
@@ -519,16 +405,15 @@ test('respects a custom manifest filename', async () => {
   expect(manifest.version).toBe(1)
 })
 
-// 23 + 24
 test.each([
   ['an ssr build', { manifest: true, ssr: 'src/ssr.js' }, undefined],
   ['a manifest-less build', { manifest: false }, undefined],
   ['a non-client environment', { manifest: true }, { environment: { name: 'ssr' } }]
-])('skips %s instead of failing', async (_, buildConfig, context) => {
+])('skips %s', async (_, buildConfig, context) => {
   const directory = await mkdtemp(path.join(os.tmpdir(), 'laravel-fonts-'))
 
   try {
-    const plugin = fontManifest({ laravel: { families: sansFamily } })
+    const plugin = fontManifest({ laravel: true })
     plugin.configResolved({ base: '/build/', build: buildConfig })
     plugin.generateBundle({ dir: directory }, {})
     await expect(
@@ -544,54 +429,25 @@ test.each([
 test('never writes a development manifest', async () => {
   const { files } = await buildManifest(bundleFor(regularFace, universFiles), {
     base: '/build/',
-    laravel: { families: sansFamily }
+    laravel: true
   })
 
   expect(files).not.toContain('fonts-manifest.dev.json')
 })
 
 test.each([
-  [{}, '`laravel.families` must be a non-empty object'],
-  [{ families: {} }, '`laravel.families` must be a non-empty object'],
-  [{ families: [] }, '`laravel.families` must be a non-empty object'],
-  [{ families: { sans: { variable: '--font-sans' } } }, 'missing a "family"'],
-  [{ families: { sans: { family: 'Univers' } } }, 'needs a "variable"'],
-  [{ families: { sans: { family: 'Univers', variable: 'font-sans' } } }, 'needs a "variable"'],
-  [
-    { families: { sans: { family: 'Univers, sans-serif', variable: '--font-sans' } } },
-    'fallback stacks are not supported'
-  ],
-  [{ families: sansFamily, preload: [{ weight: 400 }] }, 'exactly one of "alias" and "family"'],
-  [
-    { families: sansFamily, preload: [{ alias: 'sans', family: 'Univers', weight: 400 }] },
-    'exactly one of "alias" and "family"'
-  ],
-  [{ families: sansFamily, preload: [{ alias: 'sans' }] }, 'missing a "weight"'],
-  [{ families: sansFamily, preload: [{ alias: 'sans', weight: 'heavy' }] }, 'invalid weight'],
-  [
-    { families: sansFamily, preload: [{ alias: 'sans', weight: 400, style: 'slanted' }] },
-    'unknown style'
-  ],
-  [{ families: sansFamily, manifestFilename: 'nested/fonts.json' }, 'must be a filename, not a path'],
-  [{ families: sansFamily, style: 'file' }, '`laravel.style` must be one of "inline"']
+  ['sans', '`laravel` must be `true` or an object'],
+  [{ families: {} }, 'Unknown `laravel` option "families"'],
+  [{ include: ['Univers'], exclude: ['Literata'] }, 'either `laravel.include` or `laravel.exclude`'],
+  [{ include: [''] }, '`laravel.include` must be a list of font family names'],
+  [{ exclude: [42] }, '`laravel.exclude` must be a list of font family names'],
+  [{ preload: [{ weight: 400 }] }, '`laravel.preload` must be `true` or `false`'],
+  [{ manifestFilename: 'nested/fonts.json' }, 'must be a filename, not a path'],
+  [{ style: 'file' }, '`laravel.style` must be one of "inline"']
 ])('rejects invalid configuration at plugin construction (%#)', (laravel, expected) => {
   expect(() => fontManifest({ laravel })).toThrowError(expected)
 })
 
-test('reports the preload index in policy errors', async () => {
-  const message = await errorFor(
-    bundleFor(regularFace, universFiles),
-    {
-      families: sansFamily,
-      preload: [{ alias: 'sans', weight: 400 }, { alias: 'sans', weight: 900 }]
-    },
-    { base: '/build/' }
-  )
-
-  expect(message).toContain('preload[1]')
-})
-
-// 26
 test('reproduces the target output for a vendored stylesheet', async () => {
   const css = await readFile(path.join(fixtures, 'univers.css'), 'utf8')
   const bundle = {
@@ -606,83 +462,23 @@ test('reproduces the target output for a vendored stylesheet', async () => {
     mono: asset('assets/LegacyMono-9c0d1e.ttf', 'src/fonts/LegacyMono.ttf')
   }
 
-  const { manifest } = await buildManifest(bundle, {
-    base: '/build/',
-    laravel: {
-      families: {
-        sans: { family: 'Univers', variable: '--font-sans' },
-        serif: { family: 'Literata Variable', variable: '--font-serif' },
-        mono: { family: 'Legacy Mono', variable: '--font-mono' }
-      },
-      preload: [
-        { alias: 'sans', weight: 400 },
-        { alias: 'sans', weight: 700 },
-        { family: 'Literata Variable', weight: 400 },
-        { alias: 'mono', weight: 400 }
-      ]
-    }
-  })
+  const { manifest } = await buildManifest(bundle, { base: '/build/', laravel: true })
 
-  expect(manifest.style.familyStyles.sans.match(/@font-face/g)).toHaveLength(4)
-  expect(manifest.style.familyStyles.serif.match(/@font-face/g)).toHaveLength(1)
+  expect(manifest.families).toEqual({
+    univers: { family: 'Univers', variable: '--font-univers' },
+    'literata-variable': { family: 'Literata Variable', variable: '--font-literata-variable' },
+    'legacy-mono': { family: 'Legacy Mono', variable: '--font-legacy-mono' }
+  })
+  expect(manifest.style.familyStyles.univers.match(/@font-face/g)).toHaveLength(4)
+  expect(manifest.style.familyStyles['literata-variable'].match(/@font-face/g)).toHaveLength(1)
   expect(manifest.style.inline.match(/@font-face/g)).toHaveLength(6)
   expect(manifest.style.inline).not.toContain('.prose')
-  expect(manifest.style.variables.serif).toBe('--font-serif: "Literata Variable";')
-  expect(manifest.preloads).toEqual([
-    {
-      alias: 'sans',
-      family: 'Univers',
-      weight: 400,
-      style: 'normal',
-      file: 'assets/Univers-regular-d4e5f6.woff2',
-      as: 'font',
-      type: 'font/woff2',
-      crossorigin: 'anonymous'
-    },
-    {
-      alias: 'sans',
-      family: 'Univers',
-      weight: 700,
-      style: 'normal',
-      file: 'assets/Univers-bold-3c4d5e.woff2',
-      as: 'font',
-      type: 'font/woff2',
-      crossorigin: 'anonymous'
-    },
-    {
-      alias: 'serif',
-      family: 'Literata Variable',
-      weight: 400,
-      style: 'normal',
-      file: 'assets/Literata-6f7a8b.woff2',
-      as: 'font',
-      type: 'font/woff2',
-      crossorigin: 'anonymous'
-    },
-    {
-      alias: 'mono',
-      family: 'Legacy Mono',
-      weight: 400,
-      style: 'normal',
-      file: 'assets/LegacyMono-9c0d1e.ttf',
-      as: 'font',
-      type: 'font/ttf',
-      crossorigin: 'anonymous'
-    }
+  expect(manifest.preloads.map(({ alias, weight, style, file, type }) => [alias, weight, style, file, type])).toEqual([
+    ['univers', 300, 'normal', 'assets/Univers-light-a1b2c3.woff2', 'font/woff2'],
+    ['univers', 400, 'normal', 'assets/Univers-regular-d4e5f6.woff2', 'font/woff2'],
+    ['univers', 400, 'italic', 'assets/Univers-italic-091a2b.woff2', 'font/woff2'],
+    ['univers', 700, 'normal', 'assets/Univers-bold-3c4d5e.woff2', 'font/woff2'],
+    ['literata-variable', '100 900', 'normal', 'assets/Literata-6f7a8b.woff2', 'font/woff2'],
+    ['legacy-mono', 400, 'normal', 'assets/LegacyMono-9c0d1e.ttf', 'font/ttf']
   ])
-})
-
-test('matches configured families case-insensitively but emits the configured spelling', async () => {
-  const css = regularFace.replace('"Univers"', 'univers')
-  const { manifest } = await buildManifest(bundleFor(css, universFiles), {
-    base: '/build/',
-    laravel: {
-      families: { sans: { family: 'Univers', variable: '--font-sans' } },
-      preload: [{ alias: 'sans', weight: 400 }]
-    }
-  })
-
-  expect(manifest.families.sans.family).toBe('Univers')
-  expect(manifest.preloads[0].family).toBe('Univers')
-  expect(manifest.style.variables.sans).toBe('--font-sans: "Univers";')
 })

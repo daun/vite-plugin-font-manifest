@@ -2,7 +2,7 @@
 
 ## 2.1.0
 
-- Emit a Laravel `fonts-manifest.json` when the new `laravel` option is configured
+- Emit a Laravel `fonts-manifest.json` for every declared font family with `laravel: true`
 - Normalize `format` to a canonical key and `mime` to the correct IANA type
 - Expose a numeric `weightRange` and collapse faces whose weights or styles are spelled differently
 - Skip the manifest update when `build.manifest` is disabled instead of warning

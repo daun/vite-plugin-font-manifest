@@ -87,16 +87,7 @@ test.each(viteVersions)('builds a laravel font manifest with Vite %s', async (_,
       logLevel: 'silent',
       plugins: [
         fontManifest({
-          laravel: {
-            families: {
-              sans: { family: 'Inter', variable: '--font-sans' },
-              mono: { family: 'Legacy', variable: '--font-mono' }
-            },
-            preload: [
-              { alias: 'sans', weight: 400 },
-              { family: 'Legacy', weight: 400 }
-            ]
-          }
+          laravel: true
         })
       ],
       build: {
@@ -113,19 +104,19 @@ test.each(viteVersions)('builds a laravel font manifest with Vite %s', async (_,
 
     expect(manifest.version).toBe(1)
     expect(manifest.families).toEqual({
-      sans: { family: 'Inter', variable: '--font-sans' },
-      mono: { family: 'Legacy', variable: '--font-mono' }
+      inter: { family: 'Inter', variable: '--font-inter' },
+      legacy: { family: 'Legacy', variable: '--font-legacy' }
     })
     expect(manifest.style.variables).toEqual({
-      sans: '--font-sans: "Inter";',
-      mono: '--font-mono: "Legacy";'
+      inter: '--font-inter: "Inter";',
+      legacy: '--font-legacy: "Legacy";'
     })
     expect(manifest.style.inline).toContain(':root {')
     expect(manifest.style.inline.match(/@font-face/g)).toHaveLength(3)
-    expect(manifest.style.familyStyles.sans).toContain('url(/build/assets/shared-')
+    expect(manifest.style.familyStyles.inter).toContain('url(/build/assets/shared-')
     expect(withoutHashes(manifest.preloads)).toEqual([
       {
-        alias: 'sans',
+        alias: 'inter',
         family: 'Inter',
         weight: 400,
         style: 'normal',
@@ -135,7 +126,7 @@ test.each(viteVersions)('builds a laravel font manifest with Vite %s', async (_,
         crossorigin: 'anonymous'
       },
       {
-        alias: 'mono',
+        alias: 'legacy',
         family: 'Legacy',
         weight: 400,
         style: 'normal',
