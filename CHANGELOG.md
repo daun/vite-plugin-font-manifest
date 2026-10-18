@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 2.0.1 - 2026-10-06
 
 - Skip `local()` sources in `@font-face` rules instead of recording them as unknown sources
 
